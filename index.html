@@ -10,9 +10,9 @@
   body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; display: flex;
          align-items: center; justify-content: center; background: #f4f4f7; color: #222; }
   main { text-align: center; padding: 24px; max-width: 360px; }
-  a.btn { display: block; margin: 12px 0; padding: 14px 24px; border-radius: 10px;
+  a.btn { display: block; margin: 10px 0; padding: 14px 24px; border-radius: 10px;
           background: #7360f2; color: #fff; text-decoration: none; font-size: 18px; }
-  a.btn.alt { background: #e4e1fb; color: #3d2fa8; }
+  a.btn.alt { background: #e4e1fb; color: #3d2fa8; font-size: 16px; padding: 12px 20px; }
   .num { font-size: 20px; font-weight: 600; letter-spacing: .5px; }
   .hint { color: #666; font-size: 14px; margin-top: 16px; }
 </style>
@@ -21,15 +21,17 @@
 <main>
   <p id="msg">Готуємо…</p>
   <p class="num" id="num"></p>
-  <a class="btn" id="share" href="#" hidden>📤 Надіслати файл у Viber</a>
-  <a class="btn alt" id="dl" href="#" hidden>Завантажити накладну</a>
+  <a class="btn" id="chat" href="#" hidden>💬 Відкрити чат із посиланням</a>
+  <a class="btn alt" id="fwd" href="#" hidden>↪️ Переслати посилання (обрати чат)</a>
+  <a class="btn alt" id="copy" href="#" hidden>📋 Копіювати посилання</a>
+  <a class="btn alt" id="share" href="#" hidden>📤 Надіслати сам файл</a>
   <a class="btn alt" id="open" href="#" hidden>Відкрити чат у Viber</a>
   <p class="hint" id="hint" hidden></p>
 </main>
 <script>
   // Everything after the '#' (phone, file name, key) stays in the browser — it
   // is never sent to any server. The PDF itself sits on GitHub only in
-  // encrypted form; the key in this fragment is what unlocks it, here.
+  // encrypted form; the key in this fragment is what unlocks it, in dl.html.
   var REPO = "prolisokmeblicom-ops/viber-redirect", BRANCH = "main";
 
   /*PARSE_START*/
@@ -37,24 +39,24 @@
   // in-app browser re-encoding), the older "n=..&f=..&k=..&t=..", or just "<phone>".
   function parseHash(raw) {
     try { if (/%[0-9A-Fa-f]{2}/.test(raw)) raw = decodeURIComponent(raw); } catch (e) {}
-    var digits = "", file = "", key = "", title = "Накладна";
+    var digits = "", file = "", key = "", title = "Накладна", order = "";
     if (raw.indexOf("=") >= 0) {
       var p = new URLSearchParams(raw);
       digits = p.get("n") || ""; file = p.get("f") || ""; key = p.get("k") || ""; title = p.get("t") || title;
     } else {
       var parts = raw.split(".");
       digits = parts[0] || ""; file = parts[1] || ""; key = parts[2] || "";
-      if (parts[3]) title = "Накладна-" + parts[3].replace(/\D/g, "");
+      order = (parts[3] || "").replace(/\D/g, "");
+      if (order) title = "Накладна-" + order;
     }
-    return { digits: digits.replace(/\D/g, ""), file: file, key: key, title: title };
+    return { digits: digits.replace(/\D/g, ""), file: file, key: key, title: title, order: order };
   }
   /*PARSE_END*/
 
   var rawHash = (location.hash || "").slice(1);
   var info = parseHash(rawHash);
   var msg = document.getElementById("msg"), hint = document.getElementById("hint");
-  var shareBtn = document.getElementById("share"), dlBtn = document.getElementById("dl"),
-      openBtn = document.getElementById("open");
+  function $(id) { return document.getElementById(id); }
 
   function b64urlToBytes(s) {
     s = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -74,15 +76,6 @@
     return new Blob([plain], { type: "application/pdf" });
   }
 
-  function saveBlob(blob) {
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = info.title + ".pdf";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
   (async function () {
     if (info.digits.length < 9 || info.digits.length > 15) {
       msg.textContent = "Некоректне посилання.";
@@ -90,52 +83,50 @@
       hint.hidden = false;
       return;
     }
-    var link = "viber://chat?number=%2B" + info.digits;
-    document.getElementById("num").textContent = "+" + info.digits;
-    openBtn.href = link; openBtn.hidden = false;
+    var chatLink = "viber://chat?number=%2B" + info.digits;
+    $("num").textContent = "+" + info.digits;
+    $("open").href = chatLink; $("open").hidden = false;
 
     if (!info.file || !info.key) {
       msg.textContent = "Відкриваємо Viber…";
-      setTimeout(function () { location.href = link; }, 300);
+      setTimeout(function () { location.href = chatLink; }, 300);
       return;
     }
 
-    var blob;
+    // The client gets a link to dl.html (same folder), which decrypts and shows
+    // the PDF. Sending it into the chat can't be automated for a personal Viber
+    // account, so the link is pre-filled in the message box: one tap on Send.
+    var base = location.origin + location.pathname.replace(/[^\/]*$/, "");
+    var dlLink = base + "dl.html#" + info.file + "." + info.key + "." + info.order;
+    var text = (info.order ? "Накладна №" + info.order : "Накладна") + ": " + dlLink;
+    var draftLink = chatLink + "&draft=" + encodeURIComponent(text);
+
+    $("chat").href = draftLink; $("chat").hidden = false;
+    $("fwd").href = "viber://forward?text=" + encodeURIComponent(text); $("fwd").hidden = false;
+    var copy = $("copy"); copy.hidden = false;
+    copy.onclick = async function (e) {
+      e.preventDefault();
+      try { await navigator.clipboard.writeText(text); copy.textContent = "✅ Скопійовано"; }
+      catch (err) { window.prompt("Скопіюйте посилання:", text); }
+    };
+    msg.textContent = "Відкриваємо Viber із посиланням на накладну…";
+    hint.textContent = "У чаті посилання вже вставлене в поле — натисніть «Надіслати». " +
+      "Якщо поле порожнє, поверніться сюди й натисніть «Переслати посилання» або «Копіювати».";
+    hint.hidden = false;
+    setTimeout(function () { location.href = draftLink; }, 400);
+
+    // Optional: send the file itself through the phone's share sheet.
     try {
-      msg.textContent = "Готуємо накладну…";
-      blob = await fetchPdf();
-    } catch (e) {
-      msg.textContent = "Не вдалося отримати накладну — перешліть її з Telegram вручну.";
-      setTimeout(function () { location.href = link; }, 1500);
-      return;
-    }
-
-    var file = new File([blob], info.title + ".pdf", { type: "application/pdf" });
-    var canShare = !!(navigator.canShare && navigator.share && navigator.canShare({ files: [file] }));
-    dlBtn.onclick = function (e) { e.preventDefault(); saveBlob(blob); };
-    dlBtn.hidden = false;
-
-    if (canShare) {
-      // Phones: the share sheet sends the file itself straight to Viber (then
-      // pick the client) — needs a tap, so no auto-redirect here.
-      msg.textContent = "Накладна готова.";
-      shareBtn.hidden = false;
-      shareBtn.onclick = async function (e) {
-        e.preventDefault();
-        try { await navigator.share({ files: [file], title: info.title }); }
-        catch (err) { if (err && err.name !== "AbortError") { saveBlob(blob); } }
-      };
-      hint.textContent = "Натисніть «Надіслати файл у Viber» → оберіть Viber → клієнта. " +
-        "Якщо нічого не відбувається — відкрийте цю сторінку в Safari/Chrome (меню ··· → «Відкрити в браузері»).";
-      hint.hidden = false;
-    } else {
-      // Desktop / browsers without file sharing: save it, then open the chat.
-      saveBlob(blob);
-      msg.textContent = "Накладну збережено. Відкриваємо Viber…";
-      hint.textContent = "У чаті натисніть 📎 → Файли → оберіть щойно завантажену накладну.";
-      hint.hidden = false;
-      setTimeout(function () { location.href = link; }, 1500);
-    }
+      var blob = await fetchPdf();
+      var f = new File([blob], info.title + ".pdf", { type: "application/pdf" });
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [f] })) {
+        var share = $("share"); share.hidden = false;
+        share.onclick = async function (e) {
+          e.preventDefault();
+          try { await navigator.share({ files: [f], title: info.title }); } catch (err) {}
+        };
+      }
+    } catch (e) {}
   })();
 </script>
 </body>
