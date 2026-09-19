@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Відкрити Viber</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; display: flex;
+         align-items: center; justify-content: center; background: #f4f4f7; color: #222; }
+  main { text-align: center; padding: 24px; max-width: 360px; }
+  a.btn { display: inline-block; margin: 12px 0; padding: 14px 24px; border-radius: 10px;
+          background: #7360f2; color: #fff; text-decoration: none; font-size: 18px; }
+  .num { font-size: 20px; font-weight: 600; letter-spacing: .5px; }
+  .hint { color: #666; font-size: 14px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <p id="msg">Відкриваємо Viber…</p>
+  <p class="num" id="num"></p>
+  <a class="btn" id="open" href="#" hidden>Відкрити чат у Viber</a>
+  <p class="hint" id="hint" hidden>Якщо Viber не відкрився — скопіюйте номер вище і знайдіть його у Viber вручну.</p>
+</main>
+<script>
+  // The phone number travels in the URL fragment (#380…), which browsers never
+  // send to the server — so it doesn't end up in any hosting logs.
+  var digits = (location.hash || "").replace(/\D/g, "");
+  var msg = document.getElementById("msg");
+  if (digits.length < 9 || digits.length > 15) {
+    msg.textContent = "Некоректне посилання.";
+  } else {
+    var link = "viber://chat?number=%2B" + digits;
+    document.getElementById("num").textContent = "+" + digits;
+    var btn = document.getElementById("open");
+    btn.href = link;
+    btn.hidden = false;
+    document.getElementById("hint").hidden = false;
+    location.href = link;
+    msg.textContent = "Якщо Viber не відкрився автоматично — натисніть кнопку:";
+  }
+</script>
+</body>
+</html>
