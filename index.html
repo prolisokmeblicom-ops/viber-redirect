@@ -9,36 +9,91 @@
   body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; display: flex;
          align-items: center; justify-content: center; background: #f4f4f7; color: #222; }
   main { text-align: center; padding: 24px; max-width: 360px; }
-  a.btn { display: inline-block; margin: 12px 0; padding: 14px 24px; border-radius: 10px;
+  a.btn { display: block; margin: 12px 0; padding: 14px 24px; border-radius: 10px;
           background: #7360f2; color: #fff; text-decoration: none; font-size: 18px; }
+  a.btn.alt { background: #e4e1fb; color: #3d2fa8; }
   .num { font-size: 20px; font-weight: 600; letter-spacing: .5px; }
   .hint { color: #666; font-size: 14px; margin-top: 16px; }
 </style>
 </head>
 <body>
 <main>
-  <p id="msg">Відкриваємо Viber…</p>
+  <p id="msg">Готуємо…</p>
   <p class="num" id="num"></p>
+  <a class="btn alt" id="dl" href="#" hidden>Завантажити накладну</a>
   <a class="btn" id="open" href="#" hidden>Відкрити чат у Viber</a>
-  <p class="hint" id="hint" hidden>Якщо Viber не відкрився — скопіюйте номер вище і знайдіть його у Viber вручну.</p>
+  <p class="hint" id="hint" hidden></p>
 </main>
 <script>
-  // The phone number travels in the URL fragment (#380…), which browsers never
-  // send to the server — so it doesn't end up in any hosting logs.
-  var digits = (location.hash || "").replace(/\D/g, "");
-  var msg = document.getElementById("msg");
-  if (digits.length < 9 || digits.length > 15) {
-    msg.textContent = "Некоректне посилання.";
-  } else {
+  // Everything after the '#' (phone, file name, key) stays in the browser — it
+  // is never sent to any server. The PDF itself sits on GitHub only in
+  // encrypted form; the key in this fragment is what unlocks it, here.
+  var REPO = "prolisokmeblicom-ops/viber-redirect", BRANCH = "main";
+
+  var raw = (location.hash || "").slice(1);
+  var params = new URLSearchParams(raw.indexOf("=") >= 0 ? raw : "n=" + raw);
+  var digits = (params.get("n") || "").replace(/\D/g, "");
+  var fileName = params.get("f"), keyB64 = params.get("k");
+  var title = params.get("t") || "nakladna";
+
+  var msg = document.getElementById("msg"), hint = document.getElementById("hint");
+  var dlBtn = document.getElementById("dl"), openBtn = document.getElementById("open");
+
+  function b64urlToBytes(s) {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function fetchPdf() {
+    var url = "https://raw.githubusercontent.com/" + REPO + "/" + BRANCH + "/f/" + fileName + ".bin";
+    var resp = await fetch(url, { cache: "no-store" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    var buf = new Uint8Array(await resp.arrayBuffer());
+    var key = await crypto.subtle.importKey("raw", b64urlToBytes(keyB64), "AES-GCM", false, ["decrypt"]);
+    var plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12));
+    return new Blob([plain], { type: "application/pdf" });
+  }
+
+  function saveBlob(blob) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = title + ".pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  (async function () {
+    if (digits.length < 9 || digits.length > 15) { msg.textContent = "Некоректне посилання."; return; }
     var link = "viber://chat?number=%2B" + digits;
     document.getElementById("num").textContent = "+" + digits;
-    var btn = document.getElementById("open");
-    btn.href = link;
-    btn.hidden = false;
-    document.getElementById("hint").hidden = false;
-    location.href = link;
-    msg.textContent = "Якщо Viber не відкрився автоматично — натисніть кнопку:";
-  }
+    openBtn.href = link; openBtn.hidden = false;
+
+    var downloaded = false;
+    if (fileName && keyB64) {
+      try {
+        msg.textContent = "Завантажуємо накладну…";
+        var blob = await fetchPdf();
+        saveBlob(blob);
+        downloaded = true;
+        dlBtn.onclick = function (e) { e.preventDefault(); saveBlob(blob); };
+        dlBtn.hidden = false;
+      } catch (e) {
+        msg.textContent = "Не вдалося завантажити накладну — перешліть її з Telegram вручну.";
+      }
+    }
+    if (downloaded) {
+      msg.textContent = "Накладну збережено. Відкриваємо Viber…";
+      hint.textContent = "У чаті натисніть 📎 → Файли → оберіть щойно завантажену накладну.";
+    } else if (!fileName) {
+      msg.textContent = "Відкриваємо Viber…";
+    }
+    hint.hidden = !hint.textContent;
+    setTimeout(function () { location.href = link; }, downloaded ? 1500 : 300);
+  })();
 </script>
 </body>
 </html>
