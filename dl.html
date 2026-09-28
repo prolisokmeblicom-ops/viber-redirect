@@ -27,24 +27,34 @@
 </main>
 <script>
   // The PDF is stored on GitHub only encrypted, and decrypted here, in the
-  // browser. The key travels in the ?query string (?f=...&k=...&o=...) —
-  // not a #fragment — because this link is shared as plain text inside a
-  // WhatsApp message, and WhatsApp's own auto-linkifier only recognizes the
-  // query part of a URL as part of the tappable link, silently dropping
-  // anything after a literal "#" and truncating a fragment-based link to a
-  // bare "dl.html". Falls back to the old dot-separated #fragment format
-  // ("<file>.<key>.<orderId>") for any already-shared links using it.
+  // browser. The key travels in a single ?d= query value ("<file>.<key>.
+  // <orderId>", dot-separated) — not a #fragment — because this link is
+  // shared as plain text inside a WhatsApp message: WhatsApp's own
+  // auto-linkifier only recognizes the query part of a URL as part of the
+  // tappable link and drops anything after a literal "#", and on top of
+  // that a real device test showed even a plain "&" inside the text gets
+  // lost somewhere in the Telegram-button -> Android -> WhatsApp handoff —
+  // so this avoids both "#" and "&"/"=" entirely, one opaque dot-separated
+  // value under one query key. Falls back to the older formats (a "?f=..
+  // &k=..&o=.." query, or the original "#file.key.orderId" fragment) for
+  // any already-shared links using them.
   var REPO = "prolisokmeblicom-ops/viber-redirect", BRANCH = "main";
 
   var qs = new URLSearchParams(location.search);
-  var file = qs.get("f") || "", key = qs.get("k") || "", orderId = qs.get("o") || "";
-  if (!file || !key) {
+  var d = qs.get("d") || "";
+  var file, key, orderId;
+  if (d) {
+    var dparts = d.split(".");
+    file = dparts[0] || ""; key = dparts[1] || ""; orderId = dparts[2] || "";
+  } else if (qs.get("f")) {
+    file = qs.get("f") || ""; key = qs.get("k") || ""; orderId = qs.get("o") || "";
+  } else {
     var raw = (location.hash || "").slice(1);
     try { if (/%[0-9A-Fa-f]{2}/.test(raw)) raw = decodeURIComponent(raw); } catch (e) {}
     var parts = raw.split(".");
     file = parts[0] || ""; key = parts[1] || ""; orderId = parts[2] || "";
   }
-  orderId = orderId.replace(/\D/g, "");
+  orderId = (orderId || "").replace(/\D/g, "");
   var title = orderId ? "Накладна №" + orderId : "Накладна";
   document.getElementById("title").textContent = title;
   var msg = document.getElementById("msg"), hint = document.getElementById("hint");
