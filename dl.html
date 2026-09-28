@@ -26,15 +26,25 @@
   <p class="hint" id="hint" hidden></p>
 </main>
 <script>
-  // The PDF is stored on GitHub only encrypted; the key is in this link's #fragment
-  // (never sent to any server) and the file is decrypted here, in the browser.
+  // The PDF is stored on GitHub only encrypted, and decrypted here, in the
+  // browser. The key travels in the ?query string (?f=...&k=...&o=...) —
+  // not a #fragment — because this link is shared as plain text inside a
+  // WhatsApp message, and WhatsApp's own auto-linkifier only recognizes the
+  // query part of a URL as part of the tappable link, silently dropping
+  // anything after a literal "#" and truncating a fragment-based link to a
+  // bare "dl.html". Falls back to the old dot-separated #fragment format
+  // ("<file>.<key>.<orderId>") for any already-shared links using it.
   var REPO = "prolisokmeblicom-ops/viber-redirect", BRANCH = "main";
 
-  // Link format: "<file>.<key>.<orderId>"
-  var raw = (location.hash || "").slice(1);
-  try { if (/%[0-9A-Fa-f]{2}/.test(raw)) raw = decodeURIComponent(raw); } catch (e) {}
-  var parts = raw.split(".");
-  var file = parts[0] || "", key = parts[1] || "", orderId = (parts[2] || "").replace(/\D/g, "");
+  var qs = new URLSearchParams(location.search);
+  var file = qs.get("f") || "", key = qs.get("k") || "", orderId = qs.get("o") || "";
+  if (!file || !key) {
+    var raw = (location.hash || "").slice(1);
+    try { if (/%[0-9A-Fa-f]{2}/.test(raw)) raw = decodeURIComponent(raw); } catch (e) {}
+    var parts = raw.split(".");
+    file = parts[0] || ""; key = parts[1] || ""; orderId = parts[2] || "";
+  }
+  orderId = orderId.replace(/\D/g, "");
   var title = orderId ? "Накладна №" + orderId : "Накладна";
   document.getElementById("title").textContent = title;
   var msg = document.getElementById("msg"), hint = document.getElementById("hint");
